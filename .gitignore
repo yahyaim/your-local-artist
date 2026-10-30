@@ -1,0 +1,13 @@
+backend/.venv/
+__pycache__/
+.pytest_cache/
+frontend/node_modules/
+frontend/dist/
+storage/temp/*
+storage/projects/*
+storage/sample_clip.mp4
+!storage/**/.gitkeep
+backend/models/*
+!backend/models/.gitkeep
+.env
+.DS_Store
