@@ -10,7 +10,7 @@ from app.main import create_app
 
 @pytest.fixture()
 def client(tmp_path: Path) -> TestClient:
-    settings = Settings(storage_dir=tmp_path / "storage", temp_ttl_minutes=1)
+    settings = Settings(storage_dir=tmp_path / "storage", temp_ttl_minutes=1, prefetch_models=False)
     with TestClient(create_app(settings)) as c:
         yield c
 

@@ -3,6 +3,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+SAM2_COMMIT=2b90b9f5ceec907a1c18123530e92e794ad901a4
+
 say() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 die() { printf '\n\033[31mError:\033[0m %s\n' "$*" >&2; exit 1; }
 
@@ -30,8 +32,21 @@ say "Creating backend/.venv"
 backend/.venv/bin/python -m pip install --upgrade pip --quiet
 backend/.venv/bin/python -m pip install -r backend/requirements.txt
 
+say "Installing SAM 2 (official repo, pinned commit)"
+# The CUDA extension is optional (only speeds up mask post-processing); skip it without nvcc.
+if command -v nvcc >/dev/null; then export SAM2_BUILD_CUDA=1; else export SAM2_BUILD_CUDA=0; fi
+# --no-build-isolation: SAM 2's build requires torch, which is already in the venv.
+backend/.venv/bin/python -m pip install --no-build-isolation \
+  "SAM-2 @ git+https://github.com/facebookresearch/sam2.git@${SAM2_COMMIT}"
+
 say "Installing frontend dependencies"
 (cd frontend && npm install --no-fund --no-audit)
 
 mkdir -p storage/temp storage/projects
+
+if [[ "${SKIP_MODELS:-0}" != 1 ]]; then
+  say "Downloading model weights into backend/models (one time, ~545 MB)"
+  backend/.venv/bin/python scripts/download_models.py
+fi
+
 say "Done. Start the app with: make dev"

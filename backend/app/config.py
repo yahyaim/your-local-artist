@@ -19,6 +19,14 @@ class Settings(BaseSettings):
     storage_dir: Path = REPO_ROOT / "storage"
     # Unconfirmed uploads untouched for this long are deleted (env: TEMP_TTL_MINUTES).
     temp_ttl_minutes: float = 60.0
+    # Projects nobody has used for this long (tab closed without "Start over") are
+    # deleted, source video and renders included (env: PROJECT_TTL_HOURS).
+    project_ttl_hours: float = 6.0
+    # Download missing model weights in the background at startup (env: PREFETCH_MODELS).
+    prefetch_models: bool = True
+    # Blender executable for the .blend export (env: BLENDER_PATH). If unset, PATH
+    # and the standard install location are searched.
+    blender_path: str | None = None
 
     @cached_property
     def temp_dir(self) -> Path:

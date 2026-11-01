@@ -32,7 +32,8 @@ def _background() -> np.ndarray:
 
 def _draw_figure(img: np.ndarray, t: float) -> None:
     ink = (40, 38, 30)
-    cx = int(120 + (WIDTH - 240) * (0.5 - 0.5 * math.cos(t * math.pi / 2)))
+    # Walks across the middle third, so the "no person found -> centre click" fallback hits it.
+    cx = int(WIDTH / 2 - 90 + 180 * (0.5 - 0.5 * math.cos(t * math.pi / 2)))
     bob = int(4 * math.sin(t * 2 * math.pi * 2))
     hip = (cx, 230 + bob)
     neck = (cx, 150 + bob)

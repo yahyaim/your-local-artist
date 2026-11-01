@@ -8,7 +8,7 @@ cd "$(dirname "$0")/.."
 
 trap 'kill 0' EXIT INT TERM
 
-(cd backend && .venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload --reload-dir app) &
+(cd backend && .venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload --reload-dir app --reload-dir pipeline --reload-dir styles) &
 (cd frontend && npm run dev -- --host 127.0.0.1 --port 5173 --strictPort) &
 
 wait

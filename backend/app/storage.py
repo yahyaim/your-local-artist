@@ -10,9 +10,14 @@ An upload only becomes a project when the user clicks "Use this video". Temp
 uploads are removed on discard, or by `sweep_expired` once nothing in them has
 been written for `temp_ttl_seconds` (an upload still streaming keeps bumping
 its file mtime, so it is never swept mid-transfer).
+
+Projects are deleted when the user clicks "Start over", or by `sweep_expired`
+once unused for `project_ttl_seconds`. Every request that touches a project
+bumps the mtime of its project.json, which is what "unused" is measured from.
 """
 
 import json
+import os
 import re
 import shutil
 import threading
@@ -57,10 +62,12 @@ def _check_id(value: str) -> str:
 
 
 class Storage:
-    def __init__(self, temp_dir: Path, projects_dir: Path, temp_ttl_seconds: float) -> None:
+    def __init__(self, temp_dir: Path, projects_dir: Path, temp_ttl_seconds: float,
+                 project_ttl_seconds: float) -> None:
         self.temp_dir = temp_dir
         self.projects_dir = projects_dir
         self.temp_ttl_seconds = temp_ttl_seconds
+        self.project_ttl_seconds = project_ttl_seconds
         self._lock = threading.Lock()
         temp_dir.mkdir(parents=True, exist_ok=True)
         projects_dir.mkdir(parents=True, exist_ok=True)
@@ -123,8 +130,9 @@ class Storage:
             shutil.rmtree(upload_dir, ignore_errors=True)
             return project
 
-    def sweep_expired(self, now: float | None = None) -> list[str]:
-        """Delete temp uploads with no file activity within the TTL. Returns removed IDs."""
+    def sweep_expired(self, now: float | None = None, busy: frozenset[str] = frozenset()) -> list[str]:
+        """Delete temp uploads with no file activity within the temp TTL, and projects
+        unused for the project TTL (except `busy` ones, which have a job). Returns removed IDs."""
         now = time.time() if now is None else now
         removed: list[str] = []
         with self._lock:
@@ -135,15 +143,32 @@ class Storage:
                 if now - max(mtimes) > self.temp_ttl_seconds:
                     shutil.rmtree(upload_dir, ignore_errors=True)
                     removed.append(upload_dir.name)
+            for project_dir in self.projects_dir.iterdir():
+                if not project_dir.is_dir() or project_dir.name in busy:
+                    continue
+                # A folder without project.json is left over from a deletion that raced a write.
+                marker = project_dir / "project.json"
+                last_used = (marker if marker.is_file() else project_dir).stat().st_mtime
+                if now - last_used > self.project_ttl_seconds:
+                    shutil.rmtree(project_dir, ignore_errors=True)
+                    removed.append(project_dir.name)
         return removed
 
     # --- projects -----------------------------------------------------------
 
     def project_dir(self, project_id: str) -> Path:
         project_dir = self.projects_dir / _check_id(project_id)
-        if not (project_dir / "project.json").is_file():
-            raise NotFound(project_id)
+        marker = project_dir / "project.json"
+        try:
+            os.utime(marker)  # mark as in use, for the idle sweep
+        except FileNotFoundError as exc:
+            raise NotFound(project_id) from exc
         return project_dir
+
+    def delete_project(self, project_id: str) -> None:
+        """Remove the project folder: source video, caches, renders and exports."""
+        with self._lock:
+            shutil.rmtree(self.project_dir(project_id), ignore_errors=True)
 
     def get_project(self, project_id: str) -> Project:
         return Project.model_validate_json((self.project_dir(project_id) / "project.json").read_text())
