@@ -5,6 +5,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
@@ -77,7 +78,12 @@ def export_blend(blender: BlenderInfo, strokes_dir: Path, out: Path, fps: float,
         blender.path, "-b", "--factory-startup", "-P", str(SCRIPT), "--",
         "--strokes", str(strokes_dir), "--output", str(tmp), "--fps", f"{fps:.4f}", "--name", name,
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
+    # Blender stores the home folder (the file browser's default directory) inside
+    # every .blend it saves, which would leak the username into shared files. An
+    # empty throwaway home keeps it out; --factory-startup means no user config is needed.
+    with tempfile.TemporaryDirectory(prefix="blender-home-", dir="/tmp" if os.path.isdir("/tmp") else None) as home:
+        env = {**os.environ, "HOME": home, "USERPROFILE": home}
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=3600, env=env)
     if result.returncode != 0 or not tmp.is_file():
         tail = "\n".join((result.stdout + result.stderr).strip().splitlines()[-15:])
         raise RuntimeError(f"Blender export failed (exit {result.returncode}):\n{tail}")

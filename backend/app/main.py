@@ -57,7 +57,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         stop.set()
         job_manager.shutdown()
 
-    app = FastAPI(title="my-local-artist", lifespan=lifespan)
+    # FastAPI's built-in OpenTelemetry is a no-op without an SDK, but OTEL_* variables
+    # in the environment could switch on export to a remote collector; rule that out.
+    app = FastAPI(title="my-local-artist", lifespan=lifespan,
+                  telemetry={"tracing": False, "metrics": False, "logs": False, "auto_configure": False})
     app.state.settings = settings
     app.state.storage = storage
     app.state.previews = PreviewService(storage)

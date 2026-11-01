@@ -4,6 +4,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# npm checks the registry for a newer npm on every run unless told not to.
+export NPM_CONFIG_UPDATE_NOTIFIER=false
+
 [[ -x backend/.venv/bin/python ]] || { echo "Run 'make setup' first." >&2; exit 1; }
 
 trap 'kill 0' EXIT INT TERM

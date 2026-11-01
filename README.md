@@ -46,12 +46,14 @@ flowchart LR
   9. [Evaluation](#9-evaluation)
   10. [Limitations](#10-limitations)
 - [Using the app](#using-the-app)
+- [Data privacy](#data-privacy)
 - [Performance](#performance)
 - [Stroke data format](#stroke-data-format)
 - [Models](#models)
 - [Project layout](#project-layout)
 - [Configuration](#configuration)
 - [Engineering decisions](#engineering-decisions)
+- [License](#license)
 - [References](#references)
 
 ## Quick start
@@ -497,6 +499,87 @@ If Blender is missing or older than 4.0, only the `.blend` button is disabled, w
   --strokes <render>/strokes --output out.blend --fps 24
 ```
 
+## Data privacy
+
+The input is footage of a person, often the user. The app is designed so that this footage never leaves the machine and is kept on disk no longer than needed.
+
+### Everything is processed on-device
+
+- **Local inference.** Detection, segmentation, line extraction, optical flow, vectorisation, rendering and export all run locally, on the CPU or GPU.
+- **No services.** There are no accounts, telemetry, analytics or crash reports, and no cloud APIs.
+- **No external resources in the UI.** The interface loads nothing from outside: no CDNs, web fonts or trackers.
+- **No biometric processing.** There is no face recognition, identity matching or biometric template. The person detector outputs bounding boxes only. Segmentation produces a silhouette mask, which is used for that clip and then deleted (see below).
+
+### Network access
+
+- **At runtime,** the only outgoing requests are model weight downloads over HTTPS, from `dl.fbaipublicfiles.com`, `huggingface.co` and `download.pytorch.org`.
+  - The requests contain no user data, only a fixed `User-Agent: my-local-artist`.
+  - Each file is verified against a pinned SHA-256 checksum and loaded with `torch.load(weights_only=True)`. A tampered checkpoint therefore can't run code.
+  - Once the weights are in `backend/models/`, the app works fully offline. Set `PREFETCH_MODELS=false` to stop the background download at startup.
+- **At setup,** `make setup` additionally uses Homebrew, pip, npm and GitHub to install dependencies, including the SAM 2 code at a pinned commit.
+- **Exposure on the network.** Both servers listen on `127.0.0.1` only, so other devices on your network can't reach them. There is no login, so any program running under your account on the same machine could access the API. Don't change the host to `0.0.0.0` on a shared network.
+
+### What is stored, and for how long
+
+All data lives under `storage/` (or `STORAGE_DIR`), which git ignores.
+
+| Data | Location | Deleted |
+| --- | --- | --- |
+| Unconfirmed upload | `temp/<id>/` | On **Discard**, or after 60 idle minutes |
+| Source video, original file name, video metadata | `projects/<id>/source.*`, `project.json` | On **Start over**, or after 6 h without use |
+| Subject selection (click coordinates) | `projects/<id>/subject.json` | With the project |
+| Single-frame previews (frames, masks, style samples) | `projects/<id>/cache/preview/` | With the project |
+| Extracted frames, SAM 2 masks, line maps, optical flow | `projects/<id>/cache/{frames,masks,lines,flow}/` | **Right after each generation**, whether it finished, was cancelled or failed |
+| Renders and exports | `projects/<id>/renders/` | With the project |
+
+The browser stores nothing: no cookies, no local storage. The project ID is kept in the URL hash, so it does appear in browser history. Server logs go to the terminal only and are not written to disk. They contain request paths, which include the uploaded file's name, plus project and job IDs and timings.
+
+### What the output files contain
+
+- **MP4 videos.** All container metadata from the source is removed: GPS location, recording device, creation time, title and chapters. However:
+  - Both `preview.mp4` and `original.mp4` **keep the source audio track**, so your voice is in them.
+  - `original.mp4` is your actual footage, resized.
+- **SVG and `.blend`.** These contain only vector strokes and materials, but the strokes trace your silhouette and face, so the drawing can still be a recognisable likeness. Blender normally records the saving user's home folder in every `.blend`, which would expose your username. The exporter runs Blender with a temporary, empty home folder so that path is never written. A test checks this.
+- **Download file names** start with the original video's file name. Rename the video before uploading if its name is sensitive.
+
+### Third-party libraries
+
+The installed dependencies were audited for telemetry and network access.
+
+**Method**
+
+1. All 57 Python and 84 npm packages were listed and searched for telemetry and network code.
+2. The complete pipeline was run inside a macOS sandbox that denies all outbound network traffic and DNS. The run covered person detection, SAM 2 video propagation, Informative Drawings, RAFT, all three styles, and the SVG and Blender exports.
+3. A Python audit hook (`sys.addaudithook`) recorded every DNS lookup and socket connection made by any library.
+4. A positive control confirmed that both mechanisms catch a real request.
+
+**Result.** The run made zero network attempts, the sandbox logged zero denials, and nothing was written outside the project folder except Python's `__pycache__` bytecode.
+
+| Component | Collects or sends data? | Notes |
+| --- | --- | --- |
+| PyTorch, torchvision | No | No telemetry. Their weight download helpers are never called: models are built with `weights=None` and loaded from `backend/models/`. |
+| SAM 2 (Hydra, OmegaConf, iopath) | No | Configs are read from the installed package. No network code is used. |
+| OpenCV, scikit-image, SciPy, NumPy, Pillow, skia-python | No | scikit-image can download sample datasets, but only through `skimage.data`, which isn't used. |
+| FastAPI, Starlette, Uvicorn, Pydantic | No | FastAPI 0.162 has built-in OpenTelemetry. It requires `opentelemetry-api`, which is a no-op without an SDK, and it only exports when `FASTAPI_OTEL_AUTO_CONFIGURE` and an `OTEL_EXPORTER_OTLP_*` endpoint are set. The app turns it off explicitly, so environment variables can't enable it. |
+| React, Vite, Tailwind CSS | No | None of the 84 installed packages is a telemetry or analytics package. |
+| FFmpeg | No | Reads and writes local files only. |
+| Blender | No | Runs headless with `--factory-startup` and a throwaway home folder, so it neither reads nor updates your Blender preferences or recent-files list. Online access for extensions is off by default and unused. |
+
+**Install tools.** Some install tools contact their own servers during `make setup`, separately from the app:
+
+- Homebrew sends usage analytics by default.
+- npm sends the dependency list to its registry for `npm audit` and checks for npm updates.
+- pip checks PyPI for a newer pip.
+
+The setup and dev scripts disable all of these (`HOMEBREW_NO_ANALYTICS`, `NPM_CONFIG_AUDIT/FUND/UPDATE_NOTIFIER=false`, `PIP_DISABLE_PIP_VERSION_CHECK`). Downloading the packages and model weights unavoidably shows your IP address and the requested files to PyPI, npm, GitHub, Hugging Face, Meta and PyTorch, as any download does.
+
+**Interactive API docs.** FastAPI's docs page at `http://127.0.0.1:8000/docs` loads Swagger UI from `cdn.jsdelivr.net`. The app itself never uses that page. Opening it in the browser is the only way to trigger an external request while the app is running.
+
+### Limitations
+
+- **Deletion is ordinary file deletion, not a secure wipe.** On SSDs, or with backups such as Time Machine, copies may remain recoverable.
+- **Cloud-synced folders.** If the repository sits in a synced folder (iCloud "Desktop & Documents", Dropbox, OneDrive), everything in `storage/` is uploaded by that sync client. To keep footage local, set `STORAGE_DIR` to a folder that isn't synced.
+
 ## Performance
 
 These are measured on an Apple M4 (MPS) at 720 px, in seconds per output frame.
@@ -594,6 +677,29 @@ Set these as environment variables or in a `.env` file at the repository root.
 - **Two-step exports.** An export is a POST that builds the file, then a GET that downloads it. This way a missing Blender produces a readable error instead of a broken download.
 - **Single GPU worker.** Generation jobs run one at a time, because each saturates the GPU. Progress is pushed over Server-Sent Events, with a polling fallback.
 - **Interface palette.** The UI uses [this palette](https://colorhunt.co/palette/f5f5f5dff1f1bbd5daff0000) plus `#17262B` for text and ink.
+
+## License
+
+my-local-artist is released under the [MIT License](LICENSE). Copyright © 2026 mny.
+
+The MIT license covers this repository's own code only. Dependencies and model weights keep their own licenses, and they are downloaded at setup rather than redistributed here:
+
+| Component | License |
+| --- | --- |
+| SAM 2 / SAM 2.1 (code and checkpoints) | Apache-2.0 |
+| Informative Drawings code | MIT. The checkpoint is distributed by the authors with no separate terms stated. |
+| torchvision (Faster R-CNN, RAFT code and weights) | BSD-3-Clause |
+| PyTorch | BSD-3-Clause, with bundled components under Apache-2.0, MIT and other permissive licenses |
+| OpenCV | Apache-2.0 |
+| scikit-image, SciPy, NumPy, skia-python | BSD |
+| FastAPI, Pydantic, React, Vite, Tailwind CSS | MIT |
+| Blender (external program, not bundled) | GPL-2.0-or-later |
+| FFmpeg (external program, not bundled) | LGPL-2.1-or-later / GPL, depending on the build |
+
+Some notes on the terms:
+
+- `blender_export/build_grease_pencil.py` runs inside Blender through its Python API. The MIT license is GPL-compatible, so the script can be used with Blender as is.
+- Pretrained weights are trained on public datasets, such as COCO, FlyingChairs, Sintel and KITTI, and some of those datasets have their own terms, including non-commercial clauses. Check them before using generated output in a commercial product.
 
 ## References
 

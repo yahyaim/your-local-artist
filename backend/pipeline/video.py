@@ -54,7 +54,9 @@ class Encoder:
         if audio_from is not None and audio_range is not None:
             cmd += ["-ss", f"{audio_range[0]:.3f}", "-to", f"{audio_range[1]:.3f}", "-i", str(audio_from),
                     "-map", "0:v", "-map", "1:a?", "-c:a", "aac", "-b:a", "160k", "-shortest"]
-        cmd += ["-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
+        # No metadata from the source (phone GPS location, device, creation time, title).
+        cmd += ["-map_metadata", "-1", "-map_chapters", "-1",
+                "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
                 "-movflags", "+faststart", str(out)]
         self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
 

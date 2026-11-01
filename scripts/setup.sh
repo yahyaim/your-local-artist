@@ -5,6 +5,11 @@ cd "$(dirname "$0")/.."
 
 SAM2_COMMIT=2b90b9f5ceec907a1c18123530e92e794ad901a4
 
+# No usage analytics or version pings from the installers.
+export HOMEBREW_NO_ANALYTICS=1 HOMEBREW_NO_AUTO_UPDATE=1
+export PIP_DISABLE_PIP_VERSION_CHECK=1
+export NPM_CONFIG_UPDATE_NOTIFIER=false NPM_CONFIG_FUND=false NPM_CONFIG_AUDIT=false
+
 say() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 die() { printf '\n\033[31mError:\033[0m %s\n' "$*" >&2; exit 1; }
 
