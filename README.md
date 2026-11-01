@@ -94,7 +94,7 @@ The compute device is chosen automatically, in the order CUDA, MPS, CPU. Overrid
 | $`\lambda`$ | The *Smoothing* control, in $`[0, 1]`$ |
 | $`\delta`$ | The *Detail* control, in $`[0, 1]`$ |
 | $`\tau`$ | The *Thickness* control |
-| $`\operatorname{lerp}(a, b, x) = a + (b - a)\,x`$ | Linear interpolation; controls map to parameters through it |
+| $`\mathrm{lerp}(a, b, x) = a + (b - a)\,x`$ | Linear interpolation; controls map to parameters through it |
 
 The output for each frame is a vector frame $`\mathcal{S}_t = (\mathcal{R}_t, \mathcal{P}_t)`$:
 
@@ -180,8 +180,8 @@ The parameters are:
 | $`k`$ | 1.6 |
 | $`p`$ | 30 |
 | $`\varphi`$ | 20 |
-| $`\sigma`$ | $`\operatorname{lerp}(1.25, 0.8, \delta)\sqrt{s}`$ |
-| $`\varepsilon`$ | $`\operatorname{lerp}(0.24, 0.31, \delta)`$ |
+| $`\sigma`$ | $`\mathrm{lerp}(1.25, 0.8, \delta)\sqrt{s}`$ |
+| $`\varepsilon`$ | $`\mathrm{lerp}(0.24, 0.31, \delta)`$ |
 
 Without any adjustment, XDoG turns uniformly dark regions (black clothing, deep shadow) into solid ink, because $`D \approx g < \varepsilon`$ there. To avoid this, grey levels are first lifted, $`g' = 0.35 + 0.65\,g`$, so flat areas stay above $`\varepsilon`$ and only genuine edges are drawn. Dark tones are rendered by hatching instead (§5.2).
 
@@ -191,30 +191,30 @@ Without any adjustment, XDoG turns uniformly dark regions (black clothing, deep 
 
 Line maps are converted to *centreline* strokes, single paths along the middle of each line, rather than outline polygons. A centreline gives each line one stroke, which is the representation Grease Pencil and stroke-based animation expect.
 
-1. **Binarisation by hysteresis** [10]. A pixel is ink if $`L > \theta_{\text{lo}}`$ and it is connected to some pixel with $`L > \theta_{\text{hi}}`$, where $`\theta_{\text{lo}} = \operatorname{lerp}(0.30, 0.12, \delta)`$ and $`\theta_{\text{hi}} = \operatorname{lerp}(0.60, 0.35, \delta)`$. Compared with a single threshold, this keeps faint segments of strong lines and stops lines breaking into dashes. Components smaller than $`12 s^2`$ pixels are discarded.
+1. **Binarisation by hysteresis** [10]. A pixel is ink if $`L > \theta_{\text{lo}}`$ and it is connected to some pixel with $`L > \theta_{\text{hi}}`$, where $`\theta_{\text{lo}} = \mathrm{lerp}(0.30, 0.12, \delta)`$ and $`\theta_{\text{hi}} = \mathrm{lerp}(0.60, 0.35, \delta)`$. Compared with a single threshold, this keeps faint segments of strong lines and stops lines breaking into dashes. Components smaller than $`12 s^2`$ pixels are discarded.
 2. **Thinning.** The binary map is reduced to a one-pixel-wide, 8-connected skeleton with the Zhang–Suen parallel thinning algorithm [11] (scikit-image).
 3. **Graph decomposition.** Each skeleton pixel's degree is computed by convolution with the 8-neighbour kernel. Pixels of degree ≥ 3 form junction clusters. Removing them splits the skeleton into simple chains.
    - Each chain is traced from an endpoint, preferring 4-neighbours over diagonal ones so staircase corners are not skipped.
    - Chains with no endpoint are closed loops.
    - A chain end adjacent to a junction is extended to the junction cluster's centroid, so strokes still meet at T- and X-junctions.
-4. **Pruning.** Chains shorter than $`\operatorname{lerp}(18, 6, \delta)\,s`$ pixels are dropped.
-5. **Smoothing.** Pixel-quantised chains are smoothed with a 1D Gaussian along arc length, $`\sigma = \operatorname{lerp}(0.6, 5.0, \lambda)\,s`$ samples. Closed paths wrap around. Open paths keep their exact endpoints, so junctions stay connected.
+4. **Pruning.** Chains shorter than $`\mathrm{lerp}(18, 6, \delta)\,s`$ pixels are dropped.
+5. **Smoothing.** Pixel-quantised chains are smoothed with a 1D Gaussian along arc length, $`\sigma = \mathrm{lerp}(0.6, 5.0, \lambda)\,s`$ samples. Closed paths wrap around. Open paths keep their exact endpoints, so junctions stay connected.
 6. **Arc-length resampling.** Points are redistributed at uniform spacing of $`2.5\,s`$ pixels by linear interpolation of the cumulative chord length. Uniform sampling makes curvature-independent point matching between frames possible (§7.3), and gives Blender evenly spaced control points.
 
 #### 4.2 Region outlines
 
 For the flat-colour style, a label image $`\ell(x) \in \{-1, 0, \dots, K-1\}`$ is converted to filled polygons with holes:
 
-1. **Small-region absorption.** Connected components of each label smaller than $`A_{\min} = \operatorname{lerp}(700, 90, \delta)\,s^2`$ are relabelled to the label of their nearest large-region pixel, using the Euclidean feature transform (`distance_transform_edt` with indices). Merging specks into their neighbours avoids the visual noise of tiny islands, and avoids leaving holes where they were.
+1. **Small-region absorption.** Connected components of each label smaller than $`A_{\min} = \mathrm{lerp}(700, 90, \delta)\,s^2`$ are relabelled to the label of their nearest large-region pixel, using the Euclidean feature transform (`distance_transform_edt` with indices). Merging specks into their neighbours avoids the visual noise of tiny islands, and avoids leaving holes where they were.
 2. **Border following.** Each label mask is dilated by one pixel, so adjacent fills overlap slightly and no hairline seams appear. Its contours are then extracted with Suzuki–Abe border following [12] in two-level (`RETR_CCOMP`) mode. That mode gives outer boundaries and their holes explicitly, as a parent–child hierarchy.
-3. Each outer boundary and hole is Gaussian-smoothed (wrapping, $`\sigma = \operatorname{lerp}(0.8, 4.0, \lambda)\,s`$) and resampled at $`3s`$ pixels. Regions are painted largest first.
+3. Each outer boundary and hole is Gaussian-smoothed (wrapping, $`\sigma = \mathrm{lerp}(0.8, 4.0, \lambda)\,s`$) and resampled at $`3s`$ pixels. Regions are painted largest first.
 
 ### 5. Drawing styles
 
 Each style is split into two functions:
 
 ```math
-\textit{rasterize}: I_t \mapsto \{\text{float maps}\}, \qquad \textit{vectorize}: \{\text{maps}\} \mapsto \mathcal{S}_t ,
+\mathit{rasterize}: I_t \mapsto \{\text{float maps}\}, \qquad \mathit{vectorize}: \{\text{maps}\} \mapsto \mathcal{S}_t ,
 ```
 
 The split lets temporal filtering act on the intermediate maps (§7.2). A third function, *prepare*, runs once per video and builds state that must stay constant over time, such as a colour palette.
@@ -227,7 +227,7 @@ The strokes are the centrelines of the Informative Drawings ink map (§3.1, §4.
 
 The strokes are the centrelines of the XDoG map, with the following additions.
 
-- **Width.** Each point's width comes from the line's local thickness: $`w_i = \operatorname{clip}\big(2\,\mathrm{DT}(x_i),\, s,\, 3.5 s\big) \cdot 0.75\,\tau`$. Here $`\mathrm{DT}`$ is the Euclidean distance transform of the binary edge map, sampled at the centreline.
+- **Width.** Each point's width comes from the line's local thickness: $`w_i = \mathrm{clip}\big(2\,\mathrm{DT}(x_i),\, s,\, 3.5 s\big) \cdot 0.75\,\tau`$. Here $`\mathrm{DT}`$ is the Euclidean distance transform of the binary edge map, sampled at the centreline.
 - **Multiple passes.** Every stroke longer than $`20s`$ pixels is drawn twice. Each pass is offset along the stroke normal by a smooth, position-dependent amount, $`\pm 1.1 s`$ pixels. The two passes use different materials (`graphite`, `graphite_light`), with base opacities 0.8 and 0.45.
 - **Hand-drawn gestures.**
   - Endpoints overshoot or stop short by between $`-3s`$ and $`5s`$ pixels.
@@ -235,7 +235,7 @@ The strokes are the centrelines of the XDoG map, with the following additions.
   - Pressure-modulated opacity is $`0.6 + 0.4 \sin(\pi u)^{0.6}`$.
 - **Coherent randomness.** All of these random quantities are drawn from smooth *value-noise fields*, never from a per-frame random number generator. A field is a Gaussian random lattice with a cell size of $`60s`$ pixels, bicubically interpolated. A line therefore gets the same wobble wherever it appears, and the drawing does not "boil" from frame to frame. The fields are sampled in subject-relative coordinates (§7.4).
 - **Hatching.** Tone is taken from luminance blurred with $`\sigma = 3s`$.
-  - Two thresholds come from percentiles of the subject's own luminance: the $`\operatorname{lerp}(18, 35, \delta)`$-th percentile, capped at 0.45, and the $`\operatorname{lerp}(6, 14, \delta)`$-th, capped at 0.28. Hatching therefore adapts to exposure.
+  - Two thresholds come from percentiles of the subject's own luminance: the $`\mathrm{lerp}(18, 35, \delta)`$-th percentile, capped at 0.45, and the $`\mathrm{lerp}(6, 14, \delta)`$-th, capped at 0.28. Hatching therefore adapts to exposure.
   - The resulting shadow masks are eroded with a 5×5 ellipse.
   - They are filled with parallel strokes spaced $`7s`$ pixels apart: at +45° for shadow, and additionally at −45° (cross-hatching) for deep shadow.
   - Hatch lines stop short of the shadow boundary by a noise-driven amount.
@@ -245,7 +245,7 @@ The strokes are the centrelines of the XDoG map, with the following additions.
 
 1. **Abstraction.** Two passes of the bilateral filter [13] ($`\sigma_{\text{colour}} = 28`$, $`\sigma_{\text{space}} = 4s`$) remove texture but keep edges.
 2. **Palette (once per video).** k-means++ clustering [14] runs in CIELAB, where Euclidean distance approximates perceived colour difference.
-   - The number of colours is $`K = \operatorname{round}(\operatorname{lerp}(4, 10, \delta))`$.
+   - The number of colours is $`K = \mathrm{round}(\mathrm{lerp}(4, 10, \delta))`$.
    - About 40,000 subject pixels are sampled from 8 frames spread across the clip.
    - The clustering uses 3 restarts and a fixed seed.
    - Centres are ordered by $`L^*`$, light to dark, so material names are deterministic.
@@ -276,7 +276,7 @@ Backward warping brings any map from frame $`t-1`$ into frame $`t`$:
 **Flow confidence.** Flow is unreliable at occlusions and disocclusions, under motion blur, and where content leaves the frame. Following the occlusion-aware weighting used in video style transfer [16], each pixel gets a soft photometric confidence:
 
 ```math
-c_t(x) = \operatorname{clip}\!\left(1 - \frac{\big(G_{\sigma=2} * \lvert g_t - \mathcal{W}_t[g_{t-1}] \rvert\big)(x) - 0.04}{0.08},\; 0,\; 1\right) \cdot \mathbb{1}\!\left[x + F_t(x) \in \Omega\right],
+c_t(x) = \mathrm{clip}\!\left(1 - \frac{\big(G_{\sigma=2} * \lvert g_t - \mathcal{W}_t[g_{t-1}] \rvert\big)(x) - 0.04}{0.08},\; 0,\; 1\right) \cdot \mathbf{1}\!\left[x + F_t(x) \in \Omega\right],
 ```
 
 Here $`g`$ is the greyscale frame and $`\Omega`$ is the image domain. Confidence is 1 where the warped previous frame reproduces the current one to within about 4%, and falls to 0 at about 12%.
@@ -347,7 +347,7 @@ The weight falls linearly with match distance and with flow confidence. Genuinel
 Screen-space noise on a moving subject creates a "shower door" effect: the subject appears to slide through a fixed pattern. To avoid it, the subject's global displacement is accumulated as the median backward flow inside the mask, a robust estimate of the dominant motion:
 
 ```math
-a_t = a_{t-1} - \operatorname{median}_{x \in M_t} F_t(x), \qquad a_0 = 0 .
+a_t = a_{t-1} - \mathrm{median}_{x \in M_t} F_t(x), \qquad a_0 = 0 .
 ```
 
 The pencil noise fields are sampled at $`x - a_t`$, with toroidal wrapping, and the hatching grid is shifted by $`a_t`$ projected onto its row normal, modulo the line spacing. Wobble, overshoot and hatch lines therefore travel with the subject.
@@ -370,9 +370,9 @@ All outputs are generated from the same per-frame vector JSON. This is the singl
   - **Holes.** Region holes are emitted as strokes with a *holdout* material, which cuts through the fill.
   - **Colour management.** The preview composites in sRGB, but Blender composites in linear light. Material colours are converted with the sRGB EOTF. For dark ink of opacity $`\alpha`$ over white, the preview shows the grey $`1 - \alpha`$. To display the same grey from linear blending, the exported opacity must be
     ```math
-    \alpha_{\text{Blender}} = 1 - \operatorname{srgb\_to\_linear}(1 - \alpha),
+    \alpha_{\text{Blender}} = 1 - f_{\text{sRGB}}(1 - \alpha),
     ```
-    which maps 0.5 to 0.786. Combined with the *Standard* view transform, this reduced the mean difference between Blender renders and the preview to 2.4/255 (pencil) and 3.4/255 (rotoscope). Stroke widths match exactly.
+    where $`f_{\text{sRGB}}`$ is the sRGB-to-linear transfer function. This maps 0.5 to 0.786. Combined with the *Standard* view transform, this reduced the mean difference between Blender renders and the preview to 2.4/255 (pencil) and 3.4/255 (rotoscope). Stroke widths match exactly.
 
 ### 9. Evaluation
 
@@ -385,7 +385,7 @@ All outputs are generated from the same per-frame vector JSON. This is the singl
 Each output frame is rendered to premultiplied RGBA, $`C_t`$, with alpha $`A_t`$. The previous frame is warped with the *exact* inter-frame transform $`\mathcal{T}_t`$, and the mean absolute difference is measured inside a 40 px border-free interior $`\Omega'`$. The difference is normalised by mean ink coverage:
 
 ```math
-\text{Flicker} = \frac{\frac{1}{T-1}\sum_{t=1}^{T-1} \operatorname{mean}_{\Omega'} \big\lvert C_t - \mathcal{T}_t[C_{t-1}] \big\rvert}{\frac{1}{T}\sum_{t=0}^{T-1} \operatorname{mean}_{\Omega} A_t} .
+\text{Flicker} = \frac{\frac{1}{T-1}\sum_{t=1}^{T-1} \mathrm{mean}_{\Omega'} \big\lvert C_t - \mathcal{T}_t[C_{t-1}] \big\rvert}{\frac{1}{T}\sum_{t=0}^{T-1} \mathrm{mean}_{\Omega} A_t} .
 ```
 
 Lower is better. The normalisation matters: without it, a filter could improve the score simply by deleting lines. This metric is a warping error in the sense of Lai et al. [18], computed with ground-truth rather than estimated motion, so it is not biased towards the flow used by the method.
